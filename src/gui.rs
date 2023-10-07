@@ -1,4 +1,4 @@
-use git2::Repository;
+use git2::{Repository, IndexAddOption};
 use iced::widget::{button, text, Column, Row};
 use iced::{Alignment, Element, Sandbox, Settings};
 
@@ -8,10 +8,11 @@ pub struct GitUI {
     changes: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Message {
     RefreshRemotes,
     RefreshChanged,
+    StageChange(String),
 }
 
 impl GitUI {
@@ -29,7 +30,11 @@ impl Sandbox for GitUI {
             Err(e) => panic!("Error opening repository: {}", e),
         };
 
-        Self { repository, remotes: Vec::new(), changes: Vec::new() }
+        let mut ui = Self { repository, remotes: Vec::new(), changes: Vec::new() };
+        ui.update(Message::RefreshRemotes);
+        ui.update(Message::RefreshChanged);
+
+        ui
     }
 
     fn title(&self) -> String {
@@ -49,8 +54,14 @@ impl Sandbox for GitUI {
                 let changes = self.repository.diff_index_to_workdir(None, None).unwrap();
                 self.changes.clear();
                 for change in changes.deltas() {
-                    self.remotes.push(String::from(change.new_file().path().unwrap().to_str().unwrap()));
+                    self.changes.push(String::from(change.new_file().path().unwrap().to_str().unwrap()));
                 }
+            },
+            Message::StageChange(file) => {
+                let mut index = self.repository.index().unwrap();
+                index.add_all([file].iter(), IndexAddOption::DEFAULT, None).unwrap();
+                index.write().unwrap();
+                self.update(Message::RefreshChanged);
             },
         }
     }
@@ -59,38 +70,57 @@ impl Sandbox for GitUI {
         Column::with_children({
             let mut children = Vec::new();
 
-            children.push(Row::with_children({
+            children.push(Column::with_children({
                 let mut children = Vec::new();
-                children.push(text("Remotes").size(30).into());
-                children.push(button("Refresh").on_press(Message::RefreshRemotes).into());
+
+                children.push(Row::with_children({
+                    vec![
+                        text("Remotes").size(30).into()
+                    ]
+                })
+                .align_items(Alignment::Center)
+                .spacing(10)
+                .into());
+
+                for remote in &self.remotes {
+                    children.push(text(remote).size(20).into());
+                }
 
                 children
-            })
-            .spacing(10)
-            .into());
+            }).into());
 
-            for remote in &self.remotes {
-                children.push(text(remote).size(20).into());
-            }
-
-            children.push(Row::with_children({
+            children.push(Column::with_children({
                 let mut children = Vec::new();
-                children.push(text("Changed").size(30).into());
-                children.push(button("Refresh").on_press(Message::RefreshChanged).into());
+
+                children.push(Row::with_children({
+                    vec![
+                        text("Changed").size(30).into(),
+                    ]
+                })
+                .align_items(Alignment::Center)
+                .spacing(10)
+                .into());
+
+                for change in &self.changes {
+                    children.push(Row::with_children({
+                        vec![
+                            button(text("Stage").size(12.5)).on_press(Message::StageChange(change.clone())).into(),
+                            text(change).size(20).into(),
+                        ]
+                    })
+                    .align_items(Alignment::Center)
+                    .spacing(10)
+                    .into());
+                }
 
                 children
-            })
-            .spacing(10)
-            .into());
-
-            for changes in &self.changes {
-                children.push(text(changes).size(20).into());
-            }
+            }).into());
 
             children
         })
         .padding(20)
-        .align_items(Alignment::Center)
+        .spacing(10)
+        .align_items(Alignment::Start)
         .into()
     }
 }
