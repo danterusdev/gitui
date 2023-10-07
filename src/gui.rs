@@ -1,18 +1,20 @@
-use git2::{Repository, IndexAddOption};
-use iced::widget::{button, text, Column, Row};
-use iced::{Alignment, Element, Sandbox, Settings};
+use std::rc::Rc;
+
+use git2::Repository;
+use iced::advanced::{Widget, renderer, layout, widget, Layout};
+use iced::widget::{text, Column, Row};
+use iced::{Alignment, Element, Sandbox, Settings, Length, Rectangle, Color, mouse, Size};
+
+use crate::backend::CommitNode;
 
 pub struct GitUI {
     repository: Repository,
-    remotes: Vec<String>,
-    changes: Vec<String>,
+    commits: Vec<Rc<CommitNode>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    RefreshRemotes,
-    RefreshChanged,
-    StageChange(String),
+    RefreshTree,
 }
 
 impl GitUI {
@@ -30,9 +32,8 @@ impl Sandbox for GitUI {
             Err(e) => panic!("Error opening repository: {}", e),
         };
 
-        let mut ui = Self { repository, remotes: Vec::new(), changes: Vec::new() };
-        ui.update(Message::RefreshRemotes);
-        ui.update(Message::RefreshChanged);
+        let mut ui = Self { repository, commits: Vec::new() };
+        ui.update(Message::RefreshTree);
 
         ui
     }
@@ -43,26 +44,21 @@ impl Sandbox for GitUI {
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::RefreshRemotes => {
-                let remotes = self.repository.remotes().unwrap();
-                self.remotes.clear();
-                for remote in remotes.iter() {
-                    self.remotes.push(String::from(remote.unwrap()));
+            Message::RefreshTree => {
+                let references = self.repository.references().unwrap();
+                for reference in references {
+                    let as_commit = reference.unwrap().peel_to_commit();
+
+                    match as_commit.ok() {
+                        Some(commit) => { CommitNode::create(commit, &mut self.commits); },
+                        None => (),
+                    }
                 }
-            },
-            Message::RefreshChanged => {
-                let changes = self.repository.diff_index_to_workdir(None, None).unwrap();
-                self.changes.clear();
-                for change in changes.deltas() {
-                    self.changes.push(String::from(change.new_file().path().unwrap().to_str().unwrap()));
+
+                for commit in &self.commits {
+                    println!("{}", commit.as_ref().id);
                 }
-            },
-            Message::StageChange(file) => {
-                let mut index = self.repository.index().unwrap();
-                index.add_all([file].iter(), IndexAddOption::DEFAULT, None).unwrap();
-                index.write().unwrap();
-                self.update(Message::RefreshChanged);
-            },
+            }
         }
     }
 
@@ -82,45 +78,63 @@ impl Sandbox for GitUI {
                 .spacing(10)
                 .into());
 
-                for remote in &self.remotes {
-                    children.push(text(remote).size(20).into());
-                }
+                //for remote in &self.remotes {
+                //    children.push(text(remote).size(20).into());
+                //}
 
                 children
             }).into());
 
-            children.push(Column::with_children({
-                let mut children = Vec::new();
-
-                children.push(Row::with_children({
-                    vec![
-                        text("Changed").size(30).into(),
-                    ]
-                })
-                .align_items(Alignment::Center)
-                .spacing(10)
-                .into());
-
-                for change in &self.changes {
-                    children.push(Row::with_children({
-                        vec![
-                            button(text("Stage").size(12.5)).on_press(Message::StageChange(change.clone())).into(),
-                            text(change).size(20).into(),
-                        ]
-                    })
-                    .align_items(Alignment::Center)
-                    .spacing(10)
-                    .into());
-                }
-
-                children
-            }).into());
+            children.push(Element::new(TreeRenderer));
 
             children
         })
-        .padding(20)
-        .spacing(10)
-        .align_items(Alignment::Start)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_items(Alignment::Center)
         .into()
+    }
+}
+
+struct TreeRenderer;
+
+impl<Message, Renderer> Widget<Message, Renderer> for TreeRenderer
+where Renderer: renderer::Renderer {
+    fn width(&self) -> Length {
+        Length::Fill
+    }
+
+    fn height(&self) -> Length {
+        Length::Fill
+    }
+
+    fn layout(
+        &self,
+        _renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        let size = limits.width(Length::Fill).height(Length::Fill).resolve(Size::ZERO);
+        layout::Node::new(Size::new(size.width, size.width))
+    }
+
+    fn draw(
+        &self,
+        _state: &widget::Tree,
+        renderer: &mut Renderer,
+        _theme: &Renderer::Theme,
+        _style: &renderer::Style,
+        _layout: Layout<'_>,
+        _cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        renderer.fill_quad(
+            renderer::Quad {
+                bounds: Rectangle { x: viewport.width / 2.0 - 50.0, y: viewport.height / 2.0 - 50.0, width: 100.0, height: 100.0 },
+                border_radius: 50.0.into(),
+                border_width: 0.0,
+                border_color: Color::TRANSPARENT,
+            },
+            Color::from_rgb(0.35, 0.35, 0.35),
+        );
     }
 }
