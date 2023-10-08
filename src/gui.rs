@@ -226,40 +226,26 @@ impl Program<Message> for TreeRenderer {
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
                 if !state.dragging {
                     if let ScrollDelta::Lines { x: _, y } = delta {
-                        // want to get the distance the origin changes from the scroll, then
-                        // subtract it
-                        //
-                        // get mouse location and subtract center to get distance between them
-                        // multiply that by zoom
+                        // Mouse location in terms of graph coordinates
+                        let mouse_location_x = (state.mouse_location.x - bounds.width / 2.0) / state.zoom - state.offset.x;
+                        let mouse_location_y = (state.mouse_location.y - bounds.height / 2.0) / state.zoom - state.offset.y;
 
-                        //let x = state.mouse_location.x - bounds.width / 2.0;
+                        let previous_pos = Point::new(mouse_location_x, mouse_location_y);
+                        // Previous position of mouse in screen coordinates
+                        let previous_pos = adjust_position_for_view(previous_pos, &bounds, state);
 
                         state.zoom += y * 0.15 * state.zoom;
                         state.zoom = state.zoom.clamp(0.25, 4.0);
 
-                        //let xReal = state.offset.x;//(state.mouse_location.x - bounds.width / 2.0) * previous;
+                        let new_pos = Point::new(mouse_location_x, mouse_location_y);
+                        // Current position of mouse in screen coordinates
+                        let new_pos = adjust_position_for_view(new_pos, &bounds, state);
 
-                        // Calculate the XY as if the element is in its original, non-scaled size:
-                        //let xOrg = xReal / previous;
-
-                        // Calculate the scaled XY
-                        //let xNew = xOrg * state.zoom;  // PS: scale here is the new scale.
-
-                        // Retrieve the XY difference to be used as the change in offset.
-                        //let xDiff = xReal - xNew;
-
-                        //state.offset.x += xDiff;
-                        //let target = (state.mouse_location.x - (bounds.width / 2.0 + state.offset.x)) / previous;
-
-                        //state.offset.x = -target * state.zoom;
-
-
-                        //println!("{}", ((state.offset.x * previous + state.mouse_location.x) - (state.offset.x * state.zoom + bounds.width / 2.0)) * (state.zoom - previous) * state.zoom);
-                        //state.offset.x -= (state.mouse_location.x - bounds.width / 2.0) / previous / 3.0 * (state.zoom - previous);
-                        //state.offset.x -= ((state.offset.x * previous + state.mouse_location.x) - (state.offset.x * state.zoom + bounds.width / 2.0)) * (state.zoom - previous) * state.zoom;
-
-                        //state.offset.x -= ((state.offset.x + state.mouse_location.x) - (state.offset.x + bounds.width / 2.0)) * (state.zoom - previous) * state.zoom;
-                        //state.offset.y -= ((state.offset.y + state.mouse_location.y) - (state.offset.y + bounds.height / 2.0)) * (state.zoom - previous) * state.zoom;
+                        // Mouse distance moved in graph coordinates
+                        let moved_x = (new_pos.x - previous_pos.x) / state.zoom;
+                        state.offset.x -= moved_x;
+                        let moved_y = (new_pos.y - previous_pos.y) / state.zoom;
+                        state.offset.y -= moved_y;
                     }
                 }
                 (Status::Captured, None)
