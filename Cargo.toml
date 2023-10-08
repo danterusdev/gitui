@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 git2 = "0.18.1"
-iced = { version = "0.10.0", features = [ "advanced" ] }
+iced = { version = "0.10.0", features = ["advanced", "canvas"] }
+rand = "0.8.5"
